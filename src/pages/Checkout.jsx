@@ -62,6 +62,7 @@ export const Checkout = () => {
           price: item.price,
           subtotal: Number(item.price ?? 0) * Number(item.quantity ?? 1),
         })),
+        totalAmount: Number(finalTotal),
         shippingAddress: {
           street: data.address,
           city: data.city,

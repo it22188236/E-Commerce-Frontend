@@ -27,13 +27,8 @@ const normalizeOrder = (order) => ({
 const normalizeOrders = (payload) =>
   Array.isArray(payload) ? payload.map(normalizeOrder) : [];
 
-const buildOrderPayload = (orderData) => ({
-  user: {
-    userId: orderData?.user?.userId ?? orderData?.user?.id ?? null,
-    email: orderData?.user?.email ?? "",
-    name: orderData?.user?.name ?? "",
-  },
-  items: Array.isArray(orderData?.items)
+const buildOrderPayload = (orderData) => {
+  const normalizedItems = Array.isArray(orderData?.items)
     ? orderData.items.map((item) => ({
         productId: item.productId ?? item.id,
         productName: item.productName ?? item.name ?? "",
@@ -43,22 +38,37 @@ const buildOrderPayload = (orderData) => ({
           item.subtotal ?? Number(item.price ?? 0) * Number(item.quantity ?? 1),
         ),
       }))
-    : [],
-  shippingAddress: {
-    street: orderData?.shippingAddress?.street ?? "",
-    city: orderData?.shippingAddress?.city ?? "",
-    state: orderData?.shippingAddress?.state ?? "N/A",
-    zipCode: orderData?.shippingAddress?.zipCode ?? "",
-    country: orderData?.shippingAddress?.country ?? "N/A",
-  },
-  paymentMethod: orderData?.paymentMethod ?? "card",
-  customer: {
-    firstName: orderData?.customer?.firstName ?? "",
-    lastName: orderData?.customer?.lastName ?? "",
-    email: orderData?.customer?.email ?? "",
-    phone: orderData?.customer?.phone ?? "",
-  },
-});
+    : [];
+
+  const computedTotal = normalizedItems.reduce(
+    (sum, item) => sum + Number(item.subtotal ?? 0),
+    0,
+  );
+
+  return {
+    user: {
+      userId: orderData?.user?.userId ?? orderData?.user?.id ?? null,
+      email: orderData?.user?.email ?? "",
+      name: orderData?.user?.name ?? "",
+    },
+    items: normalizedItems,
+    totalAmount: Number(orderData?.totalAmount ?? computedTotal),
+    shippingAddress: {
+      street: orderData?.shippingAddress?.street ?? "",
+      city: orderData?.shippingAddress?.city ?? "",
+      state: orderData?.shippingAddress?.state ?? "N/A",
+      zipCode: orderData?.shippingAddress?.zipCode ?? "",
+      country: orderData?.shippingAddress?.country ?? "N/A",
+    },
+    paymentMethod: orderData?.paymentMethod ?? "card",
+    customer: {
+      firstName: orderData?.customer?.firstName ?? "",
+      lastName: orderData?.customer?.lastName ?? "",
+      email: orderData?.customer?.email ?? orderData?.user?.email ?? "",
+      phone: orderData?.customer?.phone ?? "",
+    },
+  };
+};
 
 export const orderService = {
   getOrders: async () => {
@@ -78,14 +88,11 @@ export const orderService = {
   },
 
   createOrder: async (orderData) => {
-    console.log("Creating Order with Data:", orderData);
     const response = await apiClient.request({
       method: "post",
       url: ORDERS_ENDPOINT,
       data: buildOrderPayload(orderData),
     });
-
-    console.log("Create Order Response:", response);
     const created = response?.data?.data?.order ?? response?.data?.data;
     const payment =
       response?.data?.data?.payment?.data ?? response?.data?.data?.payment;
