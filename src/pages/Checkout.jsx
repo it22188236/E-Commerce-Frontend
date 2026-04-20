@@ -50,9 +50,17 @@ export const Checkout = () => {
       const { firstName, lastName } = splitName(data.fullName);
 
       const orderResponse = await orderService.createOrder({
+        user: {
+          userId: user?.userId ?? user?.id ?? user?._id ?? null,
+          email: data.email,
+          name: data.fullName,
+        },
         items: items.map((item) => ({
-          id: item.id,
+          productId: item.id,
+          productName: item.name,
           quantity: item.quantity,
+          price: item.price,
+          subtotal: Number(item.price ?? 0) * Number(item.quantity ?? 1),
         })),
         shippingAddress: {
           street: data.address,
@@ -66,9 +74,6 @@ export const Checkout = () => {
           lastName,
           email: data.email,
           phone: data.phone,
-          address: data.address,
-          city: data.city,
-          country: data.country || "Sri Lanka",
         },
         paymentMethod: "payhere",
       });

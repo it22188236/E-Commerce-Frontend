@@ -28,10 +28,20 @@ const normalizeOrders = (payload) =>
   Array.isArray(payload) ? payload.map(normalizeOrder) : [];
 
 const buildOrderPayload = (orderData) => ({
+  user: {
+    userId: orderData?.user?.userId ?? orderData?.user?.id ?? null,
+    email: orderData?.user?.email ?? "",
+    name: orderData?.user?.name ?? "",
+  },
   items: Array.isArray(orderData?.items)
     ? orderData.items.map((item) => ({
         productId: item.productId ?? item.id,
+        productName: item.productName ?? item.name ?? "",
         quantity: Number(item.quantity ?? 1),
+        price: Number(item.price ?? 0),
+        subtotal: Number(
+          item.subtotal ?? Number(item.price ?? 0) * Number(item.quantity ?? 1),
+        ),
       }))
     : [],
   shippingAddress: {
@@ -47,9 +57,6 @@ const buildOrderPayload = (orderData) => ({
     lastName: orderData?.customer?.lastName ?? "",
     email: orderData?.customer?.email ?? "",
     phone: orderData?.customer?.phone ?? "",
-    address: orderData?.customer?.address ?? "",
-    city: orderData?.customer?.city ?? "",
-    country: orderData?.customer?.country ?? "Sri Lanka",
   },
 });
 
