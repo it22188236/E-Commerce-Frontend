@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
@@ -6,7 +6,6 @@ import { CheckCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { orderService } from "../services/orderService";
-import { paymentService } from "../services/paymentService";
 
 const splitName = (fullName = "") => {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -16,6 +15,11 @@ const splitName = (fullName = "") => {
   };
 };
 
+const getPaymentPayload = (payment) => {
+  if (!payment) return null;
+  return payment?.data ?? payment;
+};
+
 export const Checkout = () => {
   const { items, totalPrice, clearCart } = useCart();
   const { isAuthenticated, user } = useAuth();
@@ -23,9 +27,6 @@ export const Checkout = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState(null);
-  const [pendingPayment, setPendingPayment] = useState(null);
-  const [isPayHereReady, setIsPayHereReady] = useState(false);
-  const payHereCallbackBoundRef = useRef(false);
 
   const {
     register,
@@ -40,94 +41,6 @@ export const Checkout = () => {
 
   const finalTotal =
     totalPrice + (totalPrice > 50 ? 0 : 10) + totalPrice * 0.08;
-
-  useEffect(() => {
-    const loadPayHereScript = async () => {
-      if (!pendingPayment) {
-        return;
-      }
-
-      try {
-        await paymentService.getPayHereConfig();
-
-        if (window.payhere) {
-          setIsPayHereReady(true);
-          return;
-        }
-
-        const script = document.createElement("script");
-        script.src = "https://www.payhere.lk/lib/payhere.js";
-        script.async = true;
-        script.onload = () => setIsPayHereReady(true);
-        script.onerror = () => setError("Failed to load PayHere SDK script");
-        document.body.appendChild(script);
-      } catch (configError) {
-        setError(configError.message || "Failed to load PayHere configuration");
-      }
-    };
-
-    loadPayHereScript();
-  }, [pendingPayment]);
-
-  useEffect(() => {
-    if (!isPayHereReady || !pendingPayment || !window.payhere) {
-      return;
-    }
-
-    const initiatePayHere = async () => {
-      try {
-        if (!payHereCallbackBoundRef.current) {
-          window.payhere.onCompleted = async (orderId) => {
-            await paymentService.capturePayHereOrder(orderId, {
-              paymentId: pendingPayment.paymentId,
-            });
-
-            clearCart();
-            setPendingPayment(null);
-            setIsSuccess(true);
-          };
-
-          window.payhere.onDismissed = () => {
-            setError("PayHere payment was cancelled.");
-          };
-
-          window.payhere.onError = (sdkError) => {
-            setError(
-              sdkError?.message || "PayHere payment failed. Please try again.",
-            );
-          };
-
-          payHereCallbackBoundRef.current = true;
-        }
-
-        const response = await paymentService.createPayHereOrder({
-          paymentId: pendingPayment.paymentId,
-        });
-        const paymentRequest = response?.data;
-
-        if (!paymentRequest) {
-          throw new Error("Unable to initialize PayHere order");
-        }
-
-        window.payhere.startPayment(paymentRequest);
-      } catch (initError) {
-        setError(initError?.message || "Unable to start PayHere payment");
-      }
-    };
-
-    initiatePayHere();
-  }, [isPayHereReady, pendingPayment, clearCart]);
-
-  useEffect(() => {
-    return () => {
-      if (window.payhere) {
-        window.payhere.onCompleted = null;
-        window.payhere.onDismissed = null;
-        window.payhere.onError = null;
-      }
-      payHereCallbackBoundRef.current = false;
-    };
-  }, []);
 
   const onSubmit = async (data) => {
     setIsProcessing(true);
@@ -157,21 +70,23 @@ export const Checkout = () => {
           city: data.city,
           country: data.country || "Sri Lanka",
         },
-        paymentMethod: "card",
+        paymentMethod: "payhere",
       });
 
-      const paymentDetails = orderResponse?.data?.payment;
-      const paymentGateway = String(
-        paymentDetails?.paymentGateway || "payhere",
+      const payment = getPaymentPayload(orderResponse?.data?.payment);
+      const paymentStatus = String(
+        payment?.status ?? payment?.paymentStatus ?? "",
       ).toLowerCase();
+      const redirectUrl =
+        payment?.checkoutUrl ?? payment?.redirectUrl ?? payment?.paymentUrl;
 
-      if (paymentGateway !== "payhere" && paymentGateway !== "mock") {
-        throw new Error("Unsupported payment gateway");
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+        return;
       }
 
-      if (paymentGateway === "payhere") {
-        setPendingPayment(paymentDetails);
-        return;
+      if (paymentStatus === "failed") {
+        throw new Error(payment?.message || "Payment processing failed");
       }
 
       clearCart();
@@ -179,6 +94,7 @@ export const Checkout = () => {
     } catch (err) {
       setError(
         err.response?.data?.message ||
+          err.response?.data?.error ||
           err.message ||
           "Payment failed. Please try again.",
       );
@@ -221,8 +137,8 @@ export const Checkout = () => {
           Payment Completed!
         </h1>
         <p className="text-lg text-gray-600 mb-8">
-          Your order was placed and PayHere payment was completed successfully.
-          You can track your order status from the orders page.
+          Your order was placed successfully. You can track your order status
+          from the orders page.
         </p>
         <button
           onClick={() => navigate("/orders")}
@@ -378,7 +294,7 @@ export const Checkout = () => {
                 </h2>
               </div>
               <p className="text-gray-600 mt-3">
-                Your payment will be processed securely with PayHere.
+                Your payment will be processed securely.
               </p>
             </div>
 
@@ -390,28 +306,18 @@ export const Checkout = () => {
 
             <button
               type="submit"
-              disabled={isProcessing || Boolean(pendingPayment)}
+              disabled={isProcessing}
               className="w-full btn-primary py-4 text-lg font-bold shadow-lg shadow-primary-600/30 flex items-center justify-center space-x-2"
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>Initializing PayHere...</span>
+                  <span>Processing Payment...</span>
                 </>
-              ) : pendingPayment ? (
-                <span>PayHere Order Initialized</span>
               ) : (
-                <span>Pay with PayHere - Rs.{finalTotal.toFixed(2)}</span>
+                <span>Pay Now - Rs.{finalTotal.toFixed(2)}</span>
               )}
             </button>
-
-            {pendingPayment && (
-              <div className="bg-white p-6 rounded-2xl shadow-soft border border-gray-100">
-                <p className="text-sm text-gray-600 mb-4">
-                  A PayHere payment window will open to complete your order.
-                </p>
-              </div>
-            )}
           </form>
         </div>
 

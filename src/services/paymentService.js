@@ -12,32 +12,6 @@ export const paymentService = {
     return { data: response?.data?.data ?? response?.data };
   },
 
-  getPayHereConfig: async () => {
-    const response = await apiClient.request({
-      method: "get",
-      url: `${PAYMENTS_ENDPOINT}/payhere/config`,
-    });
-    return { data: response?.data?.data ?? response?.data };
-  },
-
-  createPayHereOrder: async (payload) => {
-    const response = await apiClient.request({
-      method: "post",
-      url: `${PAYMENTS_ENDPOINT}/payhere/orders`,
-      data: payload,
-    });
-    return { data: response?.data?.data ?? response?.data };
-  },
-
-  capturePayHereOrder: async (orderId, payload) => {
-    const response = await apiClient.request({
-      method: "post",
-      url: `${PAYMENTS_ENDPOINT}/payhere/orders/${orderId}/capture`,
-      data: payload,
-    });
-    return { data: response?.data?.data ?? response?.data };
-  },
-
   getPaymentDetails: async (paymentId) => {
     const response = await apiClient.request({
       method: "get",
