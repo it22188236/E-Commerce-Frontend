@@ -1,6 +1,6 @@
 import apiClient from "../utils/apiClient";
 
-const ORDERS_ENDPOINT = "/api/orders";
+const ORDERS_ENDPOINT = "/orders";
 
 const toTitleCase = (v = "") =>
   v.length > 0 ? v.charAt(0).toUpperCase() + v.slice(1) : v;
