@@ -18,10 +18,10 @@ const normalizeEndpoint = (endpoint = "") => {
     : withLeadingSlash;
 };
 
-const GATEWAY_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+const GATEWAY_BASE_URL = withApiPrefix(import.meta.env.VITE_API_BASE_URL || "");
 
 const resolveServiceBaseUrl = (serviceUrl) =>
-  serviceUrl ? withApiPrefix(serviceUrl) : GATEWAY_BASE_URL;
+  serviceUrl ? withApiPrefix(serviceUrl) : "";
 
 const attachInterceptors = (client) => {
   client.interceptors.request.use(
@@ -58,18 +58,53 @@ const createApiClient = (baseURL) => {
 };
 
 const apiClient = createApiClient(GATEWAY_BASE_URL);
-const authClient = createApiClient(
+const authFallbackClient = createApiClient(
   resolveServiceBaseUrl(import.meta.env.VITE_AUTH_SERVICE_URL),
 );
-const productClient = createApiClient(
+const productFallbackClient = createApiClient(
   resolveServiceBaseUrl(import.meta.env.VITE_PRODUCT_SERVICE_URL),
 );
-const orderClient = createApiClient(
+const orderFallbackClient = createApiClient(
   resolveServiceBaseUrl(import.meta.env.VITE_ORDER_SERVICE_URL),
 );
-const paymentClient = createApiClient(
+const paymentFallbackClient = createApiClient(
   resolveServiceBaseUrl(import.meta.env.VITE_PAYMENT_SERVICE_URL),
 );
+
+const shouldFallbackFromGateway = (error) =>
+  error?.response?.status === 301 ||
+  error?.code === "ERR_FR_TOO_MANY_REDIRECTS" ||
+  /max redirects exceeded/i.test(error?.message ?? "");
+
+const hasBaseUrl = (client) => Boolean(client?.defaults?.baseURL);
+
+const pickFallbackClient = (url = "") => {
+  if (url.startsWith("/auth")) return authFallbackClient;
+  if (url.startsWith("/products")) return productFallbackClient;
+  if (url.startsWith("/orders")) return orderFallbackClient;
+  if (url.startsWith("/payments") || url.startsWith("/notifications")) {
+    return paymentFallbackClient;
+  }
+  return null;
+};
+
+const requestWithGatewayFallback = async (requestConfig) => {
+  try {
+    return await apiClient.request(requestConfig);
+  } catch (error) {
+    if (!shouldFallbackFromGateway(error)) throw error;
+
+    const fallbackClient = pickFallbackClient(requestConfig?.url ?? "");
+    if (!fallbackClient || !hasBaseUrl(fallbackClient)) throw error;
+
+    return fallbackClient.request(requestConfig);
+  }
+};
+
+const authClient = { request: requestWithGatewayFallback };
+const productClient = { request: requestWithGatewayFallback };
+const orderClient = { request: requestWithGatewayFallback };
+const paymentClient = { request: requestWithGatewayFallback };
 
 export default apiClient;
 
@@ -84,17 +119,25 @@ const unwrap = (response) => response?.data?.data ?? response?.data;
 export const authService = {
   /** POST /api/auth/login */
   login: async (credentials) => {
-    const response = await authClient.post("/auth/login", credentials);
+    const response = await authClient.request({
+      method: "post",
+      url: "/auth/login",
+      data: credentials,
+    });
     const payload = unwrap(response);
     return { data: { token: payload?.token, user: payload?.user } };
   },
 
   /** POST /api/auth/register */
   register: async (userData) => {
-    const response = await authClient.post("/auth/register", {
-      name: userData.name,
-      email: userData.email,
-      password: userData.password,
+    const response = await authClient.request({
+      method: "post",
+      url: "/auth/register",
+      data: {
+        name: userData.name,
+        email: userData.email,
+        password: userData.password,
+      },
     });
     const payload = unwrap(response);
     return { data: { token: payload?.token, user: payload?.user } };
@@ -102,7 +145,10 @@ export const authService = {
 
   /** GET /api/auth/profile  (requires auth token) */
   getProfile: async () => {
-    const response = await authClient.get("/auth/profile");
+    const response = await authClient.request({
+      method: "get",
+      url: "/auth/profile",
+    });
     const payload = unwrap(response);
     return { data: { user: payload?.user ?? payload } };
   },
@@ -152,37 +198,48 @@ const buildProductPayload = (d) => ({
 export const productService = {
   /** GET /api/products  (public) */
   getProducts: async () => {
-    const response = await productClient.get(PRODUCTS_ENDPOINT);
+    const response = await productClient.request({
+      method: "get",
+      url: PRODUCTS_ENDPOINT,
+    });
     return { data: normalizeProductList(unwrap(response)) };
   },
 
   /** GET /api/products/:id  (public) */
   getProductById: async (id) => {
-    const response = await productClient.get(`${PRODUCTS_ENDPOINT}/${id}`);
+    const response = await productClient.request({
+      method: "get",
+      url: `${PRODUCTS_ENDPOINT}/${id}`,
+    });
     return { data: normalizeProduct(unwrap(response)) };
   },
 
   /** POST /api/products  (admin) */
   createProduct: async (productData) => {
-    const response = await productClient.post(
-      PRODUCTS_ENDPOINT,
-      buildProductPayload(productData),
-    );
+    const response = await productClient.request({
+      method: "post",
+      url: PRODUCTS_ENDPOINT,
+      data: buildProductPayload(productData),
+    });
     return { data: normalizeProduct(unwrap(response)) };
   },
 
   /** PUT /api/products/:id  (admin) */
   updateProduct: async (id, productData) => {
-    const response = await productClient.put(
-      `${PRODUCTS_ENDPOINT}/${id}`,
-      buildProductPayload(productData),
-    );
+    const response = await productClient.request({
+      method: "put",
+      url: `${PRODUCTS_ENDPOINT}/${id}`,
+      data: buildProductPayload(productData),
+    });
     return { data: normalizeProduct(unwrap(response)) };
   },
 
   /** DELETE /api/products/:id  (admin) */
   deleteProduct: async (id) => {
-    const response = await productClient.delete(`${PRODUCTS_ENDPOINT}/${id}`);
+    const response = await productClient.request({
+      method: "delete",
+      url: `${PRODUCTS_ENDPOINT}/${id}`,
+    });
     return { data: unwrap(response) ?? { id } };
   },
 };
@@ -246,22 +303,29 @@ const buildOrderPayload = (orderData) => ({
 export const orderService = {
   /** GET /api/orders  (user sees own; admin sees all) */
   getOrders: async () => {
-    const response = await orderClient.get(ORDERS_ENDPOINT);
+    const response = await orderClient.request({
+      method: "get",
+      url: ORDERS_ENDPOINT,
+    });
     return { data: normalizeOrders(response?.data?.data) };
   },
 
   /** GET /api/orders/:id  (auth) */
   getOrderById: async (orderId) => {
-    const response = await orderClient.get(`${ORDERS_ENDPOINT}/${orderId}`);
+    const response = await orderClient.request({
+      method: "get",
+      url: `${ORDERS_ENDPOINT}/${orderId}`,
+    });
     return { data: normalizeOrder(response?.data?.data) };
   },
 
   /** POST /api/orders  (auth) */
   createOrder: async (orderData) => {
-    const response = await orderClient.post(
-      ORDERS_ENDPOINT,
-      buildOrderPayload(orderData),
-    );
+    const response = await orderClient.request({
+      method: "post",
+      url: ORDERS_ENDPOINT,
+      data: buildOrderPayload(orderData),
+    });
     const created = response?.data?.data?.order ?? response?.data?.data;
     const payment =
       response?.data?.data?.payment?.data ?? response?.data?.data?.payment;
@@ -275,8 +339,12 @@ export const orderService = {
 
   /** PUT /api/orders/:id  (admin) */
   updateOrderStatus: async (orderId, status) => {
-    const response = await orderClient.put(`${ORDERS_ENDPOINT}/${orderId}`, {
-      orderStatus: status.toLowerCase(),
+    const response = await orderClient.request({
+      method: "put",
+      url: `${ORDERS_ENDPOINT}/${orderId}`,
+      data: {
+        orderStatus: status.toLowerCase(),
+      },
     });
     const updated = response?.data?.data?.order ?? response?.data?.data;
     return { data: normalizeOrder(updated) };
@@ -291,41 +359,46 @@ const PAYMENTS_ENDPOINT = "/payments";
 export const paymentService = {
   /** POST /api/payments/process  (auth) */
   processPayment: async (payload) => {
-    const response = await paymentClient.post(
-      `${PAYMENTS_ENDPOINT}/process`,
-      payload,
-    );
+    const response = await paymentClient.request({
+      method: "post",
+      url: `${PAYMENTS_ENDPOINT}/process`,
+      data: payload,
+    });
     return { data: response?.data?.data ?? response?.data };
   },
 
   getPayPalConfig: async () => {
-    const response = await paymentClient.get(
-      `${PAYMENTS_ENDPOINT}/paypal/config`,
-    );
+    const response = await paymentClient.request({
+      method: "get",
+      url: `${PAYMENTS_ENDPOINT}/paypal/config`,
+    });
     return { data: response?.data?.data ?? response?.data };
   },
 
   createPayPalOrder: async (payload) => {
-    const response = await paymentClient.post(
-      `${PAYMENTS_ENDPOINT}/orders`,
-      payload,
-    );
+    const response = await paymentClient.request({
+      method: "post",
+      url: `${PAYMENTS_ENDPOINT}/orders`,
+      data: payload,
+    });
     return { data: response?.data?.data ?? response?.data };
   },
 
   capturePayPalOrder: async (orderId, payload) => {
-    const response = await paymentClient.post(
-      `${PAYMENTS_ENDPOINT}/orders/${orderId}/capture`,
-      payload,
-    );
+    const response = await paymentClient.request({
+      method: "post",
+      url: `${PAYMENTS_ENDPOINT}/orders/${orderId}/capture`,
+      data: payload,
+    });
     return { data: response?.data?.data ?? response?.data };
   },
 
   /** GET /api/payments/:paymentId  (auth) */
   getPaymentDetails: async (paymentId) => {
-    const response = await paymentClient.get(
-      `${PAYMENTS_ENDPOINT}/${paymentId}`,
-    );
+    const response = await paymentClient.request({
+      method: "get",
+      url: `${PAYMENTS_ENDPOINT}/${paymentId}`,
+    });
     return { data: response?.data?.data ?? response?.data };
   },
 };
@@ -346,17 +419,21 @@ const normalizeNotification = (n) => ({
 export const notificationService = {
   /** GET /api/notifications  (auth) */
   getUserNotifications: async () => {
-    const response = await paymentClient.get(NOTIFICATIONS_ENDPOINT);
+    const response = await paymentClient.request({
+      method: "get",
+      url: NOTIFICATIONS_ENDPOINT,
+    });
     const data = response?.data?.data;
     return { data: Array.isArray(data) ? data.map(normalizeNotification) : [] };
   },
 
   /** POST /api/notifications/send  (auth) */
   sendNotification: async (payload) => {
-    const response = await paymentClient.post(
-      `${NOTIFICATIONS_ENDPOINT}/send`,
-      payload,
-    );
+    const response = await paymentClient.request({
+      method: "post",
+      url: `${NOTIFICATIONS_ENDPOINT}/send`,
+      data: payload,
+    });
     return { data: response?.data?.data ?? response?.data };
   },
 };
