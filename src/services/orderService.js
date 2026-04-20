@@ -1,6 +1,6 @@
 import apiClient from "../utils/apiClient";
 
-const ORDERS_ENDPOINT = "/orders";
+const ORDERS_ENDPOINT = "/api/orders";
 
 const toTitleCase = (v = "") =>
   v.length > 0 ? v.charAt(0).toUpperCase() + v.slice(1) : v;
@@ -71,11 +71,14 @@ export const orderService = {
   },
 
   createOrder: async (orderData) => {
+    console.log("Creating Order with Data:", orderData);
     const response = await apiClient.request({
       method: "post",
       url: ORDERS_ENDPOINT,
       data: buildOrderPayload(orderData),
     });
+
+    console.log("Create Order Response:", response);
     const created = response?.data?.data?.order ?? response?.data?.data;
     const payment =
       response?.data?.data?.payment?.data ?? response?.data?.data?.payment;
