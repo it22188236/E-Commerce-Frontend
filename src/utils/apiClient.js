@@ -19,9 +19,41 @@ const normalizeEndpoint = (endpoint = "") => {
 };
 
 const GATEWAY_BASE_URL = withApiPrefix(import.meta.env.VITE_API_BASE_URL || "");
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000);
 
-const resolveServiceBaseUrl = (serviceUrl) =>
-  serviceUrl ? withApiPrefix(serviceUrl) : "";
+const enrichError = (error) => {
+  const status = error?.response?.status;
+  const timeoutDetected =
+    error?.code === "ECONNABORTED" ||
+    /timeout/i.test(error?.message ?? "") ||
+    /max redirects exceeded/i.test(error?.message ?? "");
+
+  const isUnauthorized = status === 401;
+  const isServiceUnavailable = status === 503;
+  const isGatewayTimeout = status === 504 || timeoutDetected;
+
+  let userMessage = "Unexpected error. Please try again.";
+  if (isUnauthorized) {
+    userMessage = "Your session expired. Please log in again.";
+  } else if (isServiceUnavailable) {
+    userMessage =
+      "Service is temporarily unavailable. Please try again shortly.";
+  } else if (isGatewayTimeout) {
+    userMessage = "Request timed out at API gateway. Please try again.";
+  } else if (!status) {
+    userMessage =
+      "Unable to reach API gateway. Check your connection and retry.";
+  }
+
+  return Object.assign(error, {
+    statusCode: status ?? 0,
+    isUnauthorized,
+    isServiceUnavailable,
+    isGatewayTimeout,
+    isTimeout: timeoutDetected,
+    userMessage,
+  });
+};
 
 const attachInterceptors = (client) => {
   client.interceptors.request.use(
@@ -38,12 +70,19 @@ const attachInterceptors = (client) => {
   client.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (error.response?.status === 401) {
+      const enriched = enrichError(error);
+
+      if (enriched.isUnauthorized) {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         window.dispatchEvent(new Event("auth-error"));
       }
-      return Promise.reject(error);
+
+      if (enriched.isServiceUnavailable || enriched.isGatewayTimeout) {
+        window.dispatchEvent(new Event("api-unavailable"));
+      }
+
+      return Promise.reject(enriched);
     },
   );
 };
@@ -51,6 +90,7 @@ const attachInterceptors = (client) => {
 const createApiClient = (baseURL) => {
   const client = axios.create({
     baseURL,
+    timeout: API_TIMEOUT_MS,
     headers: { "Content-Type": "application/json" },
   });
   attachInterceptors(client);
@@ -58,53 +98,10 @@ const createApiClient = (baseURL) => {
 };
 
 const apiClient = createApiClient(GATEWAY_BASE_URL);
-const authFallbackClient = createApiClient(
-  resolveServiceBaseUrl(import.meta.env.VITE_AUTH_SERVICE_URL),
-);
-const productFallbackClient = createApiClient(
-  resolveServiceBaseUrl(import.meta.env.VITE_PRODUCT_SERVICE_URL),
-);
-const orderFallbackClient = createApiClient(
-  resolveServiceBaseUrl(import.meta.env.VITE_ORDER_SERVICE_URL),
-);
-const paymentFallbackClient = createApiClient(
-  resolveServiceBaseUrl(import.meta.env.VITE_PAYMENT_SERVICE_URL),
-);
-
-const shouldFallbackFromGateway = (error) =>
-  error?.response?.status === 301 ||
-  error?.code === "ERR_FR_TOO_MANY_REDIRECTS" ||
-  /max redirects exceeded/i.test(error?.message ?? "");
-
-const hasBaseUrl = (client) => Boolean(client?.defaults?.baseURL);
-
-const pickFallbackClient = (url = "") => {
-  if (url.startsWith("/auth")) return authFallbackClient;
-  if (url.startsWith("/products")) return productFallbackClient;
-  if (url.startsWith("/orders")) return orderFallbackClient;
-  if (url.startsWith("/payments") || url.startsWith("/notifications")) {
-    return paymentFallbackClient;
-  }
-  return null;
-};
-
-const requestWithGatewayFallback = async (requestConfig) => {
-  try {
-    return await apiClient.request(requestConfig);
-  } catch (error) {
-    if (!shouldFallbackFromGateway(error)) throw error;
-
-    const fallbackClient = pickFallbackClient(requestConfig?.url ?? "");
-    if (!fallbackClient || !hasBaseUrl(fallbackClient)) throw error;
-
-    return fallbackClient.request(requestConfig);
-  }
-};
-
-const authClient = { request: requestWithGatewayFallback };
-const productClient = { request: requestWithGatewayFallback };
-const orderClient = { request: requestWithGatewayFallback };
-const paymentClient = { request: requestWithGatewayFallback };
+const authClient = apiClient;
+const productClient = apiClient;
+const orderClient = apiClient;
+const paymentClient = apiClient;
 
 export default apiClient;
 
