@@ -12,27 +12,27 @@ export const paymentService = {
     return { data: response?.data?.data ?? response?.data };
   },
 
-  getPayPalConfig: async () => {
+  getPayHereConfig: async () => {
     const response = await apiClient.request({
       method: "get",
-      url: `${PAYMENTS_ENDPOINT}/paypal/config`,
+      url: `${PAYMENTS_ENDPOINT}/payhere/config`,
     });
     return { data: response?.data?.data ?? response?.data };
   },
 
-  createPayPalOrder: async (payload) => {
+  createPayHereOrder: async (payload) => {
     const response = await apiClient.request({
       method: "post",
-      url: `${PAYMENTS_ENDPOINT}/orders`,
+      url: `${PAYMENTS_ENDPOINT}/payhere/orders`,
       data: payload,
     });
     return { data: response?.data?.data ?? response?.data };
   },
 
-  capturePayPalOrder: async (orderId, payload) => {
+  capturePayHereOrder: async (orderId, payload) => {
     const response = await apiClient.request({
       method: "post",
-      url: `${PAYMENTS_ENDPOINT}/orders/${orderId}/capture`,
+      url: `${PAYMENTS_ENDPOINT}/payhere/orders/${orderId}/capture`,
       data: payload,
     });
     return { data: response?.data?.data ?? response?.data };

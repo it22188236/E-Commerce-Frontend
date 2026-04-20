@@ -1,0 +1,12 @@
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://e-commerce-api-gateway-production.up.railway.app}
+        VITE_API_TIMEOUT_MS: ${VITE_API_TIMEOUT_MS:-15000}
+    image: ecommerce-frontend:latest
+    ports:
+      - "3000:80"
+    restart: unless-stopped

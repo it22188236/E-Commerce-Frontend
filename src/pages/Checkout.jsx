@@ -24,9 +24,8 @@ export const Checkout = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState(null);
   const [pendingPayment, setPendingPayment] = useState(null);
-  const [paypalClientId, setPaypalClientId] = useState("");
-  const [isPayPalReady, setIsPayPalReady] = useState(false);
-  const paypalContainerRef = useRef(null);
+  const [isPayHereReady, setIsPayHereReady] = useState(false);
+  const payHereCallbackBoundRef = useRef(false);
 
   const {
     register,
@@ -43,86 +42,92 @@ export const Checkout = () => {
     totalPrice + (totalPrice > 50 ? 0 : 10) + totalPrice * 0.08;
 
   useEffect(() => {
-    const loadPayPalConfig = async () => {
+    const loadPayHereScript = async () => {
       if (!pendingPayment) {
         return;
       }
 
       try {
-        const configResponse = await paymentService.getPayPalConfig();
-        const clientId = configResponse?.data?.clientId;
-        if (!clientId) {
-          throw new Error("Missing PayPal client ID");
+        await paymentService.getPayHereConfig();
+
+        if (window.payhere) {
+          setIsPayHereReady(true);
+          return;
         }
-        setPaypalClientId(clientId);
+
+        const script = document.createElement("script");
+        script.src = "https://www.payhere.lk/lib/payhere.js";
+        script.async = true;
+        script.onload = () => setIsPayHereReady(true);
+        script.onerror = () => setError("Failed to load PayHere SDK script");
+        document.body.appendChild(script);
       } catch (configError) {
-        setError(configError.message || "Failed to load PayPal configuration");
+        setError(configError.message || "Failed to load PayHere configuration");
       }
     };
 
-    loadPayPalConfig();
+    loadPayHereScript();
   }, [pendingPayment]);
 
   useEffect(() => {
-    const ensurePayPalScript = async () => {
-      if (!paypalClientId) {
-        return;
-      }
-
-      if (window.paypal) {
-        setIsPayPalReady(true);
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = `https://www.paypal.com/sdk/js?client-id=${paypalClientId}&currency=USD`;
-      script.async = true;
-      script.onload = () => setIsPayPalReady(true);
-      script.onerror = () => setError("Failed to load PayPal SDK script");
-      document.body.appendChild(script);
-    };
-
-    ensurePayPalScript();
-  }, [paypalClientId]);
-
-  useEffect(() => {
-    if (
-      !isPayPalReady ||
-      !pendingPayment ||
-      !paypalContainerRef.current ||
-      !window.paypal
-    ) {
+    if (!isPayHereReady || !pendingPayment || !window.payhere) {
       return;
     }
 
-    paypalContainerRef.current.innerHTML = "";
+    const initiatePayHere = async () => {
+      try {
+        if (!payHereCallbackBoundRef.current) {
+          window.payhere.onCompleted = async (orderId) => {
+            await paymentService.capturePayHereOrder(orderId, {
+              paymentId: pendingPayment.paymentId,
+            });
 
-    window.paypal
-      .Buttons({
-        createOrder: async () => {
-          const response = await paymentService.createPayPalOrder({
-            paymentId: pendingPayment.paymentId,
-          });
-          if (!response?.data?.id) {
-            throw new Error("Unable to create PayPal order");
-          }
-          return response.data.id;
-        },
-        onApprove: async (data) => {
-          await paymentService.capturePayPalOrder(data.orderID, {
-            paymentId: pendingPayment.paymentId,
-          });
+            clearCart();
+            setPendingPayment(null);
+            setIsSuccess(true);
+          };
 
-          clearCart();
-          setPendingPayment(null);
-          setIsSuccess(true);
-        },
-        onError: (buttonError) => {
-          setError(buttonError?.message || "PayPal payment failed");
-        },
-      })
-      .render(paypalContainerRef.current);
-  }, [isPayPalReady, pendingPayment, clearCart]);
+          window.payhere.onDismissed = () => {
+            setError("PayHere payment was cancelled.");
+          };
+
+          window.payhere.onError = (sdkError) => {
+            setError(
+              sdkError?.message || "PayHere payment failed. Please try again.",
+            );
+          };
+
+          payHereCallbackBoundRef.current = true;
+        }
+
+        const response = await paymentService.createPayHereOrder({
+          paymentId: pendingPayment.paymentId,
+        });
+        const paymentRequest = response?.data;
+
+        if (!paymentRequest) {
+          throw new Error("Unable to initialize PayHere order");
+        }
+
+        window.payhere.startPayment(paymentRequest);
+      } catch (initError) {
+        setError(initError?.message || "Unable to start PayHere payment");
+      }
+    };
+
+    initiatePayHere();
+  }, [isPayHereReady, pendingPayment, clearCart]);
+
+  useEffect(() => {
+    return () => {
+      if (window.payhere) {
+        window.payhere.onCompleted = null;
+        window.payhere.onDismissed = null;
+        window.payhere.onError = null;
+      }
+      payHereCallbackBoundRef.current = false;
+    };
+  }, []);
 
   const onSubmit = async (data) => {
     setIsProcessing(true);
@@ -157,14 +162,14 @@ export const Checkout = () => {
 
       const paymentDetails = orderResponse?.data?.payment;
       const paymentGateway = String(
-        paymentDetails?.paymentGateway || "paypal",
+        paymentDetails?.paymentGateway || "payhere",
       ).toLowerCase();
 
-      if (paymentGateway !== "paypal" && paymentGateway !== "mock") {
+      if (paymentGateway !== "payhere" && paymentGateway !== "mock") {
         throw new Error("Unsupported payment gateway");
       }
 
-      if (paymentGateway === "paypal") {
+      if (paymentGateway === "payhere") {
         setPendingPayment(paymentDetails);
         return;
       }
@@ -216,7 +221,7 @@ export const Checkout = () => {
           Payment Completed!
         </h1>
         <p className="text-lg text-gray-600 mb-8">
-          Your order was placed and PayPal payment was captured successfully.
+          Your order was placed and PayHere payment was completed successfully.
           You can track your order status from the orders page.
         </p>
         <button
@@ -369,11 +374,11 @@ export const Checkout = () => {
               <div className="flex items-center space-x-3">
                 <CreditCard className="w-6 h-6 text-primary-600" />
                 <h2 className="text-xl font-bold text-gray-900">
-                  Pay with PayPal
+                  Pay with PayHere
                 </h2>
               </div>
               <p className="text-gray-600 mt-3">
-                Your payment will be processed securely with PayPal.
+                Your payment will be processed securely with PayHere.
               </p>
             </div>
 
@@ -391,22 +396,20 @@ export const Checkout = () => {
               {isProcessing ? (
                 <>
                   <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>Initializing PayPal...</span>
+                  <span>Initializing PayHere...</span>
                 </>
               ) : pendingPayment ? (
-                <span>PayPal Order Initialized</span>
+                <span>PayHere Order Initialized</span>
               ) : (
-                <span>Pay with PayPal - Rs.{finalTotal.toFixed(2)}</span>
+                <span>Pay with PayHere - Rs.{finalTotal.toFixed(2)}</span>
               )}
             </button>
 
             {pendingPayment && (
               <div className="bg-white p-6 rounded-2xl shadow-soft border border-gray-100">
                 <p className="text-sm text-gray-600 mb-4">
-                  Complete your payment securely with your PayPal sandbox
-                  account.
+                  A PayHere payment window will open to complete your order.
                 </p>
-                <div ref={paypalContainerRef} />
               </div>
             )}
           </form>
