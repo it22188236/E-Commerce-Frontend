@@ -98,7 +98,6 @@ const createApiClient = (baseURL) => {
 };
 
 const apiClient = createApiClient(GATEWAY_BASE_URL);
-const authClient = apiClient;
 const productClient = apiClient;
 const orderClient = apiClient;
 const paymentClient = apiClient;
@@ -109,47 +108,6 @@ export default apiClient;
 // Shared helpers
 // ---------------------------------------------------------------------------
 const unwrap = (response) => response?.data?.data ?? response?.data;
-
-// ---------------------------------------------------------------------------
-// AUTH  –  auth-service:5001  →  /api/auth/*
-// ---------------------------------------------------------------------------
-export const authService = {
-  /** POST /api/auth/login */
-  login: async (credentials) => {
-    const response = await authClient.request({
-      method: "post",
-      url: "/auth/login",
-      data: credentials,
-    });
-    const payload = unwrap(response);
-    return { data: { token: payload?.token, user: payload?.user } };
-  },
-
-  /** POST /api/auth/register */
-  register: async (userData) => {
-    const response = await authClient.request({
-      method: "post",
-      url: "/auth/register",
-      data: {
-        name: userData.name,
-        email: userData.email,
-        password: userData.password,
-      },
-    });
-    const payload = unwrap(response);
-    return { data: { token: payload?.token, user: payload?.user } };
-  },
-
-  /** GET /api/auth/profile  (requires auth token) */
-  getProfile: async () => {
-    const response = await authClient.request({
-      method: "get",
-      url: "/auth/profile",
-    });
-    const payload = unwrap(response);
-    return { data: { user: payload?.user ?? payload } };
-  },
-};
 
 // ---------------------------------------------------------------------------
 // PRODUCTS  –  product-service:5002  →  /api/products/*

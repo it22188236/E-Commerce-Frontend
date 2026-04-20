@@ -1,23 +1,23 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
-import { motion } from 'framer-motion';
-import { Loader2, Mail, Lock, User, Package } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
-import { authService } from '../services/authService';
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { motion } from "framer-motion";
+import { Loader2, Mail, Lock, User, Package } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { authService } from "../services/authService";
 
 export const Register = () => {
   const {
     register,
     handleSubmit,
     formState: { errors },
-    watch
+    watch,
   } = useForm();
   const { login } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const password = watch('password');
+  const password = watch("password");
 
   const onSubmit = async (data) => {
     setLoading(true);
@@ -25,10 +25,10 @@ export const Register = () => {
     try {
       const response = await authService.register(data);
       login(response.data.user, response.data.token);
-      navigate('/');
+      navigate("/");
     } catch (err) {
       setError(
-        err.response?.data?.message || 'Registration failed. Please try again.'
+        err.response?.data?.message || "Registration failed. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -39,14 +39,14 @@ export const Register = () => {
       <motion.div
         initial={{
           opacity: 0,
-          y: 20
+          y: 20,
         }}
         animate={{
           opacity: 1,
-          y: 0
+          y: 0,
         }}
-        className="max-w-md w-full space-y-8 bg-white p-8 sm:p-10 rounded-3xl shadow-card border border-gray-100">
-        
+        className="max-w-md w-full space-y-8 bg-white p-8 sm:p-10 rounded-3xl shadow-card border border-gray-100"
+      >
         <div className="text-center">
           <div className="mx-auto w-12 h-12 bg-primary-600 rounded-xl flex items-center justify-center mb-4">
             <Package className="w-8 h-8 text-white" />
@@ -58,11 +58,11 @@ export const Register = () => {
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
-          {error &&
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium text-center">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium text-center">
               {error}
             </div>
-          }
+          )}
 
           <div className="space-y-4">
             <div>
@@ -74,18 +74,18 @@ export const Register = () => {
                   <User className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  {...register('name', {
-                    required: 'Name is required'
+                  {...register("name", {
+                    required: "Name is required",
                   })}
                   className="input-field pl-10"
-                  placeholder="John Doe" />
-                
+                  placeholder="John Doe"
+                />
               </div>
-              {errors.name &&
-              <p className="text-red-500 text-xs mt-1">
+              {errors.name && (
+                <p className="text-red-500 text-xs mt-1">
                   {errors.name.message}
                 </p>
-              }
+              )}
             </div>
 
             <div>
@@ -97,22 +97,22 @@ export const Register = () => {
                   <Mail className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  {...register('email', {
-                    required: 'Email is required',
+                  {...register("email", {
+                    required: "Email is required",
                     pattern: {
                       value: /^\S+@\S+$/i,
-                      message: 'Invalid email address'
-                    }
+                      message: "Invalid email address",
+                    },
                   })}
                   className="input-field pl-10"
-                  placeholder="user@example.com" />
-                
+                  placeholder="user@example.com"
+                />
               </div>
-              {errors.email &&
-              <p className="text-red-500 text-xs mt-1">
+              {errors.email && (
+                <p className="text-red-500 text-xs mt-1">
                   {errors.email.message}
                 </p>
-              }
+              )}
             </div>
 
             <div>
@@ -125,22 +125,22 @@ export const Register = () => {
                 </div>
                 <input
                   type="password"
-                  {...register('password', {
-                    required: 'Password is required',
+                  {...register("password", {
+                    required: "Password is required",
                     minLength: {
                       value: 6,
-                      message: 'Password must be at least 6 characters'
-                    }
+                      message: "Password must be at least 6 characters",
+                    },
                   })}
                   className="input-field pl-10"
-                  placeholder="••••••••" />
-                
+                  placeholder="••••••••"
+                />
               </div>
-              {errors.password &&
-              <p className="text-red-500 text-xs mt-1">
+              {errors.password && (
+                <p className="text-red-500 text-xs mt-1">
                   {errors.password.message}
                 </p>
-              }
+              )}
             </div>
 
             <div>
@@ -153,43 +153,43 @@ export const Register = () => {
                 </div>
                 <input
                   type="password"
-                  {...register('confirmPassword', {
-                    required: 'Please confirm your password',
+                  {...register("confirmPassword", {
+                    required: "Please confirm your password",
                     validate: (value) =>
-                    value === password || 'Passwords do not match'
+                      value === password || "Passwords do not match",
                   })}
                   className="input-field pl-10"
-                  placeholder="••••••••" />
-                
+                  placeholder="••••••••"
+                />
               </div>
-              {errors.confirmPassword &&
-              <p className="text-red-500 text-xs mt-1">
+              {errors.confirmPassword && (
+                <p className="text-red-500 text-xs mt-1">
                   {errors.confirmPassword.message}
                 </p>
-              }
+              )}
             </div>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full btn-primary py-3 text-base shadow-lg shadow-primary-600/30">
-            
-            {loading ?
-            <Loader2 className="w-5 h-5 animate-spin" /> :
-
-            'Create Account'
-            }
+            className="w-full btn-primary py-3 text-base shadow-lg shadow-primary-600/30"
+          >
+            {loading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              "Create Account"
+            )}
           </button>
         </form>
 
         <div className="text-center mt-6">
           <p className="text-sm text-gray-600">
-            Already have an account?{' '}
+            Already have an account?{" "}
             <Link
               to="/login"
-              className="font-medium text-primary-600 hover:text-primary-500">
-              
+              className="font-medium text-primary-600 hover:text-primary-500"
+            >
               Sign in
             </Link>
           </p>
