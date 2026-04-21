@@ -56,7 +56,7 @@ export const Login = () => {
           <h2 className="text-3xl font-bold text-gray-900 tracking-tight">
             Welcome back
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-blue-600">
             Sign in to your account to continue
           </p>
           <p className="mt-3 text-xs text-gray-500"></p>
